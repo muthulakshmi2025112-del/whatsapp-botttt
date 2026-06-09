@@ -1,8 +1,36 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
+const express = require('express');
 
+const app = express();
 const MESSAGES_FILE = './messages_to_send.json';
+let currentQR = null;
+let isConnected = false;
+
+// Serve static files
+app.use(express.static('./'));
+
+// API endpoint to get QR code
+app.get('/qr-status', (req, res) => {
+    res.json({
+        qrCode: currentQR,
+        connected: isConnected
+    });
+});
+
+// API endpoint to refresh QR
+app.get('/refresh-qr', (req, res) => {
+    currentQR = null;
+    res.json({ status: 'refreshing' });
+});
+
+// Start web server on port 10000
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+    console.log(`🌐 Web server running on port ${PORT}`);
+    console.log(`📱 Open: https://your-app.onrender.com/qr.html to scan QR`);
+});
 
 console.log('========================================');
 console.log('🚀 WhatsApp Auto Sender');
@@ -11,20 +39,15 @@ console.log('========================================\n');
 // Check messages
 if (!fs.existsSync(MESSAGES_FILE)) {
     console.log('❌ No messages found! Waiting for messages...');
-    // Don't exit - keep waiting
-    process.exit(0);
 }
 
-let messages = JSON.parse(fs.readFileSync(MESSAGES_FILE, 'utf8'));
-
-if (messages.length === 0) {
-    console.log('❌ No messages to send');
-    process.exit(0);
+let messages = [];
+if (fs.existsSync(MESSAGES_FILE)) {
+    messages = JSON.parse(fs.readFileSync(MESSAGES_FILE, 'utf8'));
+    console.log(`✅ Loaded ${messages.length} messages\n`);
 }
 
-console.log(`✅ Loaded ${messages.length} messages\n`);
-
-// Create client with Chrome path for Render
+// Create client
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -33,27 +56,34 @@ const client = new Client({
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--disable-gpu'
+            '--disable-dev-shm-usage'
         ]
     }
 });
 
 // QR Code handler
 client.on('qr', (qr) => {
-    console.log('\n📱 SCAN THIS QR CODE WITH YOUR PHONE:');
-    console.log('Open WhatsApp → Settings → Linked Devices → Link a Device\n');
+    currentQR = qr;
+    console.log('\n📱 QR Code generated!');
+    console.log('Open: https://your-app.onrender.com/qr.html to scan');
     qrcode.generate(qr, { small: true });
-    console.log('\n⏳ Waiting for scan...\n');
 });
 
 client.on('authenticated', () => {
     console.log('✅ Authenticated! Session saved.\n');
+    currentQR = null;
+    isConnected = true;
 });
 
 client.on('ready', async () => {
     console.log('✅ WhatsApp READY!');
+    isConnected = true;
+    
+    if (messages.length === 0) {
+        console.log('📨 No messages to send. Waiting for campaign...');
+        return;
+    }
+    
     console.log(`📨 Sending ${messages.length} messages...\n`);
     
     let sent = 0;
@@ -88,24 +118,20 @@ client.on('ready', async () => {
     console.log(`📊 COMPLETE! Sent: ${sent}, Failed: ${failed}`);
     console.log('========================================\n');
     
+    // Clear messages file
     try {
         fs.unlinkSync(MESSAGES_FILE);
         console.log('🧹 Messages file cleared');
     } catch(e) {}
-    
-    await new Promise(r => setTimeout(r, 2000));
-    client.destroy();
-    process.exit(0);
 });
 
 client.on('auth_failure', (msg) => {
     console.error('❌ Auth failed:', msg);
-    process.exit(1);
 });
 
 client.on('disconnected', (reason) => {
     console.log('⚠️ Disconnected:', reason);
-    process.exit(0);
+    isConnected = false;
 });
 
 console.log('🔄 Starting WhatsApp client...\n');
