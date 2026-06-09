@@ -1,0 +1,5 @@
+node_modules/
+whatsapp_session/
+messages_to_send.json
+*.log
+.DS_Store
