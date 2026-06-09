@@ -2,7 +2,7 @@ services:
   - type: web
     name: whatsapp-bot
     runtime: image
-    repo: https://github.com/muthulakshmi2025112-del/whatsapp-bottt
+    repo: https://github.com/muthulakshmi2025112-del/whatsapp-botttt
     plan: free
     dockerfilePath: ./Dockerfile
     envVars:
